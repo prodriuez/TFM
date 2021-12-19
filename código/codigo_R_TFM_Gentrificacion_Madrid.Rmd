@@ -1,0 +1,508 @@
+---
+title: "codigo_R_TFM_Gentrificacion_Madrid"
+author: "Paula Andrea Rodriguez Mancipe"
+date: "18/10/2021-19/12/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Se instala el conector R-ArcGIS Bridge que permitirá pasar datos de R a ArcGIS Pro.
+```{r message=FALSE, warning = FALSE}
+install.packages("arcgisbinding", repos="https://r.esri.com", type="win.binary")
+```
+se cargan las librerías necesarias para el proyecto.
+```{r message=FALSE, warning = FALSE}
+library(rgdal)
+library(sf)
+library(raster)
+library(dplyr)
+library(sp)
+library(ggplot2)
+library(scales)
+library(units)
+library(arcgisbinding)
+library(tmap)
+library(plyr)
+library(rmarkdown)
+library(readr)
+library(RColorBrewer)
+```
+Se definen la constante de arcgis pro que sera utilizada en el proyecto
+```{r}
+ARCGIS_PRO_PATH <- 'C:/Users/pauan/OneDrive/Documentos/ArcGIS/Projects/TFM/MyProject.gdb/'
+```
+En este proyecto se trabaja con los datos espaciales en el formato establecido por el sistema de referencia estipulado EPSG:25831
+```{r}
+#ETRS89 (EPSG:25831)
+crs_legal <- st_crs(25831)
+```
+Se establece la conexión entre R y ArcGIS PRO mediante el conector R-ArcGIS Bridge y la sesión de usuario de Learning creado previamente
+```{r}
+arc.check_product()
+arc.check_portal()
+```
+# 1. Edad Nacionalidad
+
+## 1.1. Carga de los datos
+
+Se cargan los 4 archivos que pertenecen a los años 2018 al 2021 y que contienen la edad y la nacionalidad de los habitantes de los barrios de Madrid. Luego se unen todos los datos de la infraestructura en un único objeto de tipo simple feature (SF). 
+```{r message=FALSE}
+files=list.files(pattern="*.csv")
+#Se unen todos los registros de los archivos en un dataframe
+d=lapply(files, read_csv) %>% bind_rows()
+dfEdadNacionalidad<-NULL
+dfEdadNacionalidad <- bind_rows(dfEdadNacionalidad, d)
+```
+## 1.2. Limpieza y tratamiento de los datos
+
+Se revisan cuales columnas tienen valores nulos
+```{r message=FALSE}
+sapply(dfEdadNacionalidad, function(x) sum(is.na(x)))
+```
+Se comprueban los valores de las variables numéricas, donde observando la distribución de valores, no se observan outliers .
+```{r message=FALSE}
+summary(dfEdadNacionalidad)
+```
+Para generar los datos espaciales se usara el paquete sf  
+La funcion st_as_sf convierte el data frame en un objeto sf y se le asigna el sistema de coordenadas de referencia utilizando el argumento crs = 4326. La función st_transform() transforma el sistema de coordenadas. 
+```{r message=FALSE}
+sfEdadNacionalidad <- st_as_sf(dfEdadNacionalidad, coords=c('Longitud', 'Latitud'), crs=st_crs(4326))
+sfEdadNacionalidad <- st_transform(sfEdadNacionalidad, crs=crs_legal)
+```
+Por otra parte, las variables cualitativas nominales se han tratado como cadenas de caracteres en lugar de factores, por lo que se aplica la conversión a factor para realizar cálculos de frecuencia de aparición de cada valor.
+```{r message=FALSE}
+var.qualitativa <- names(sfEdadNacionalidad)[sapply(sfEdadNacionalidad, 
+function(x) (is.character(x)))]
+
+df <- as.data.frame(sfEdadNacionalidad)
+for (v in var.qualitativa){
+  sfEdadNacionalidad [,v] <- as.factor(df[,v])
+}
+
+sfEdadNacionalidad$Codigo_distrito<- as.factor(sfEdadNacionalidad$ Codigo_distrito)
+sfEdadNacionalidad$Codigo_barrio<- as.factor(sfEdadNacionalidad$ Codigo_barrio)
+
+str(sfEdadNacionalidad)
+```
+## 1.3 Análisis de datos
+
+Se crean unas variables para guardar la suma del total de cada rango de edad para posteriormente realizar graficos estadisticos.
+```{r message=FALSE}
+Españoles_0_15_años <- "Españoles_0_15_años"
+Espanoles0152018<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año, Españoles_0_15_años])
+
+Españoles_16_64_años<- "Españoles_16_64_años"
+Espanoles16642018<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año, Españoles_16_64_años])
+
+Españoles_65_mas_años<- "Españoles_65_mas_años"
+Espanoles652018<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año, Españoles_65_mas_años])
+
+Españoles_0_15_años <- "Españoles_0_15_años"
+Espanoles0152019<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2019, Españoles_0_15_años])
+
+Españoles_16_64_años<- "Españoles_16_64_años"
+Espanoles16642019<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2019, Españoles_16_64_años])
+
+Españoles_65_mas_años<- "Españoles_65_mas_años"
+Espanoles652019<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2019, Españoles_65_mas_años])
+
+Españoles_0_15_años <- "Españoles_0_15_años"
+Espanoles0152020<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2020, Españoles_0_15_años])
+
+Españoles_16_64_años<- "Españoles_16_64_años"
+Espanoles16642020<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2020, Españoles_16_64_años])
+
+Españoles_65_mas_años<- "Españoles_65_mas_años"
+Espanoles652020<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2020, Españoles_65_mas_años])
+
+Españoles_0_15_años <- "Españoles_0_15_años"
+Espanoles0152021<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2021, Españoles_0_15_años])
+
+Españoles_16_64_años<- "Españoles_16_64_años"
+Espanoles16642021<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2021, Españoles_16_64_años])
+
+Españoles_65_mas_años<- "Españoles_65_mas_años"
+Espanoles652021<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2021, Españoles_65_mas_años])
+
+Extranjeros_0_15_años <- "Extranjeros_0_15_años"
+Extranjeros0152018<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año, Extranjeros_0_15_años])
+
+Extranjeros_16_64_años<- "Extranjeros_16_64_años"
+Extranjeros16642018<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año, Extranjeros_16_64_años])
+
+Extranjeros_65_mas_años<- "Extranjeros_65_mas_años"
+Extranjeros652018<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año, Extranjeros_65_mas_años])
+
+Extranjeros_0_15_años <- "Extranjeros_0_15_años"
+Extranjeros0152019<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2019, Extranjeros_0_15_años])
+
+Extranjeros_16_64_años<- "Extranjeros_16_64_años"
+Extranjeros16642019<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2019, Extranjeros_16_64_años])
+
+Extranjeros_65_mas_años<- "Extranjeros_65_mas_años"
+Extranjeros652019<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2019, Extranjeros_65_mas_años])
+
+Extranjeros_0_15_años <- "Extranjeros_0_15_años"
+Extranjeros0152020<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2020, Extranjeros_0_15_años])
+
+Extranjeros_16_64_años<- "Extranjeros_16_64_años"
+Extranjeros16642020<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2020, Extranjeros_16_64_años])
+
+Extranjeros_65_mas_años<- "Extranjeros_65_mas_años"
+Extranjeros652020<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2020, Extranjeros_65_mas_años])
+
+Extranjeros_0_15_años <- "Extranjeros_0_15_años"
+Extranjeros0152021<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2021, Extranjeros_0_15_años])
+
+Extranjeros_16_64_años<- "Extranjeros_16_64_años"
+Extranjeros16642021<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2021, Extranjeros_16_64_años])
+
+Extranjeros_65_mas_años<- "Extranjeros_65_mas_años"
+Extranjeros652021<-sum(dfEdadNacionalidad[dfEdadNacionalidad[,Año_Esp]==Año2021, Extranjeros_65_mas_años])
+
+Edades2018<-c(Espanoles0152018, Espanoles16642018, Espanoles652018, Extranjeros0152018, Extranjeros16642018, Extranjeros652018)
+```
+Se crea un gráfico circular con las variables creadas anteriormente
+```{r message=FALSE}
+myPalette <- brewer.pal(5, "Set2")
+nombres<-c("Españoles_0_15_años","Españoles_16_64_años","Españoles_65_o_más_años","Extranjeros_0_15_años ","Extranjeros_16_64_años ","Extranjeros_65_o_mas_años ")
+porcentaje <- round(Edades2018/sum(Edades2018)*100)
+nombres <- paste(nombres, porcentaje)
+nombres <- paste(nombres,"%",sep="")
+pie(Edades2018,labels=nombres,col=myPalette,main="Población de Madrid según su edad año 2018")
+Edades2019<-c(Espanoles0152019, Espanoles16642019, Espanoles652019, Extranjeros0152019, Extranjeros16642019, Extranjeros652019)
+nombres2019<-c("Españoles_0_15_años","Españoles_16_64_años","Españoles_65_o_más_años","Extranjeros_0_15_años ","Extranjeros_16_64_años ","Extranjeros_65_o_mas_años ")
+porcentaje2019 <- round(Edades2019/sum(Edades2019)*100)
+nombres2019 <- paste(nombres2019, porcentaje2019)
+nombres2019 <- paste(nombres2019,"%",sep="")
+pie(Edades2019,labels=nombres2019,col=myPalette,main="Población de Madrid según su edad año 2019")
+Edades2020<-c(Espanoles0152020, Espanoles16642020, Espanoles652020, Extranjeros0152020, Extranjeros16642020, Extranjeros652020)
+nombres2020<-c("Españoles_0_15_años","Españoles_16_64_años","Españoles_65_o_más_años","Extranjeros_0_15_años ","Extranjeros_16_64_años ","Extranjeros_65_o_mas_años ")
+porcentaje2020 <- round(Edades2020/sum(Edades2020)*100)
+nombres2020 <- paste(nombres2020, porcentaje2020)
+nombres2020 <- paste(nombres2020,"%",sep="")
+pie(Edades2020,labels=nombres2020,col=myPalette,main="Población de Madrid según su edad año 2020")
+Edades2021<-c(Espanoles0152021, Espanoles16642021, Espanoles652021, Extranjeros0152021, Extranjeros16642021, Extranjeros652021)
+nombres2021<-c("Españoles_0_15_años","Españoles_16_64_años","Españoles_65_o_más_años","Extranjeros_0_15_años ","Extranjeros_16_64_años ","Extranjeros_65_o_mas_años ")
+porcentaje2021 <- round(Edades2021/sum(Edades2021)*100)
+nombres2021 <- paste(nombres2021, porcentaje2021)
+nombres2021 <- paste(nombres2021,"%",sep="")
+pie(Edades2021,labels=nombres2021,col=myPalette,main="Población de Madrid según su edad año 2021")
+```
+Se crean gráficos de cajas por año con el dataframe dfEdadNacionalidad
+```{r message=FALSE}
+ggplot(dfEdadNacionalidad, aes(x= as.factor(Año), y=Españoles_0_15_años)) +geom_boxplot()+ ggtitle("Españoles de 0 a 15 años en Madrid") + xlab("Año") + ylab("Españoles de 0 a 15 años") 
+ggplot(dfEdadNacionalidad, aes(x= as.factor(Año), y=Españoles_16_64_años)) +geom_boxplot()+ ggtitle("Españoles de 16 a 64 años en Madrid") + xlab("Año") + ylab("Españoles de 16 a 64 años") 
+ggplot(dfEdadNacionalidad, aes(x= as.factor(Año), y=Españoles_65_mas_años)) +geom_boxplot()+ ggtitle("Españoles de 65 o más años en Madrid") + xlab("Año") + ylab("Españoles de 65 o más años") 
+ggplot(dfEdadNacionalidad, aes(x= as.factor(Año), y=Extranjeros_0_15_años)) +geom_boxplot()+ ggtitle("Extranjeros de 0 a 15 años en Madrid") + xlab("Año") + ylab("Extranjeros de 0 a 15 años") 
+ggplot(dfEdadNacionalidad, aes(x= as.factor(Año), y=Extranjeros_16_64_años)) +geom_boxplot()+ ggtitle("Extranjeros de 16 a 64 años en Madrid") + xlab("Año") + ylab("Extranjeros de 16 a 64 años") 
+ggplot(dfEdadNacionalidad, aes(x= as.factor(Año), y=Extranjeros_65_mas_años, labels=TRUE)) +geom_boxplot()+ ggtitle("Extranjeros de 65 o más años en Madrid") + xlab("Año") + ylab("Extranjeros de 65 o más años")
+```
+Se crean diagramas de frecuencias del año 2021 con los rangos de edades de españoles y extranjeros
+```{r message=FALSE}
+dfEdadNacionalidad2021<-filter (dfEdadNacionalidad, Año== 2021)
+
+hist(dfEdadNacionalidad2021$Españoles_0_15_años, col="blue", labels=TRUE, main="Histograma Españoles de 0 a 15 años 2021",ylab="Frecuencias",xlab="Españoles de 0 a 15 años")
+hist(dfEdadNacionalidad2021$Españoles_16_64_años, col="yellow", labels=TRUE, main="Histograma Españoles de 16 a 64 años 2021",ylab="Frecuencias",xlab="Españoles de 16 a 64 años")
+hist(dfEdadNacionalidad2021$Españoles_65_mas_años, col="orange", labels=TRUE, main="Histograma Españoles de 65 a mas años 2021",ylab="Frecuencias",xlab="Españoles de 65 a mas años")
+hist(dfEdadNacionalidad2021$Extranjeros_0_15_años, col="red", labels=TRUE, main="Histograma Extranjeros de 0 a 15 años 2021",ylab="Frecuencias",xlab=" Extranjeros de 0 a 15 años")
+hist(dfEdadNacionalidad2021$Extranjeros_16_64_años, col="green", labels=TRUE,  main="Histograma Extranjeros de 16 a 64 años 2021",ylab="Frecuencias",xlab=" Extranjeros de 16 a 64 años")
+hist(dfEdadNacionalidad2021$Extranjeros_65_mas_años, col="purple", labels=TRUE, main="Histograma Extranjeros de 65 a mas años 2021",ylab="Frecuencias",xlab=" Extranjeros de 65 a mas años")
+ggplot(dfEdadNacionalidad, aes(x =Españoles_0_15_años)) +
++     geom_density()
+```
+Se incorporan los limites administrativos de los barrios de Madrid
+```{r message=FALSE}
+barrios<-readOGR("C:/Users/pauan/Downloads/Barrios")
+library(tmap)
+b <- qtm(barrios, title='Barrios')
+tmap_arrange(b)
+```
+Se generan las capas en ArcGIS Pro para realizar el estudio geoespacial, incluyendo las edades, así como los límites administrativos.
+```{r message=FALSE}
+arc.delete(paste0(ARCGIS_PRO_PATH,'barrios'))
+arc.write(path=paste0(ARCGIS_PRO_PATH, 'barrios'), data=barrios, validate=TRUE, overwrite=TRUE)
+arc.delete(paste0(ARCGIS_PRO_PATH,'EdadNacionalidad_2018'))
+arc.write(path=paste0(ARCGIS_PRO_PATH,'EdadNacionalidad_2018'), data=sfEdadNacionalidad[sfEdadNacionalidad$Año==2018,], validate=TRUE, overwrite=TRUE)
+arc.delete(paste0(ARCGIS_PRO_PATH,'EdadNacionalidad_2019'))
+arc.write(path=paste0(ARCGIS_PRO_PATH,'EdadNacionalidad_2019'), data=sfEdadNacionalidad[sfEdadNacionalidad$Año==2019,], validate=TRUE, overwrite=TRUE)
+arc.delete(paste0(ARCGIS_PRO_PATH,'EdadNacionalidad_2020'))
+arc.write(path=paste0(ARCGIS_PRO_PATH,'EdadNacionalidad_2020'), data=sfEdadNacionalidad[sfEdadNacionalidad$Año==2020,], validate=TRUE, overwrite=TRUE)
+arc.delete(paste0(ARCGIS_PRO_PATH,'EdadNacionalidad_2021'))
+arc.write(path=paste0(ARCGIS_PRO_PATH,'EdadNacionalidad_2021'), data=sfEdadNacionalidad[sfEdadNacionalidad$Año==2021,], validate=TRUE, overwrite=TRUE)
+```
+# 2. Tamaño hogar
+
+## 2.1. Carga de los datos
+
+Se cargan los 4 archivos que pertenecen a los años 2018 al 2021 y contiene el tamaño de los hogares de los barrios de Madrid.
+```{r message=FALSE}
+filestamañohogar=list.files(pattern="*.csv")
+```
+Se unen todos los registros de los archivos en un dataframe
+```{r message=FALSE}
+dtamaño=lapply(filestamañohogar, read_csv) %>% bind_rows()
+dfTamañoHogar<-NULL
+dfTamañoHogar <- bind_rows(dfTamañoHogar, dtamaño)
+```
+## 2.2. Limpieza y tratamiento de los datos
+
+Se revisan cuales columnas tienen valores nulos
+```{r message=FALSE}
+sapply(dfTamañoHogar, function(x) sum(is.na(x)))
+```
+Se comprueban los valores de las variables numéricas, donde observando la distribución de valores, no se observan outliers.
+```{r message=FALSE}
+summary(dfTamañoHogar)
+```
+La funcion st_as_sf convierte el data frame en un objeto sf y se le asigna el sistema de coordenadas de referencia utilizando el argumento crs = 4326. La función st_transform() transforma el sistema de coordenadas.
+```{r message=FALSE}
+sfTamañoHogar <- st_as_sf(dfTamañoHogar, coords=c('Longitud', 'Latitud'), crs=st_crs(4326))
+sfTamañoHogar <- st_transform(sfTamañoHogar, crs=crs_legal)
+```
+Las variables cualitativas nominales se han tratado como cadenas de caracteres en lugar de factores, por lo que se aplica la conversión a factor para realizar cálculos de frecuencia de aparición de cada valor.
+```{r message=FALSE}
+var.qualitativa.tamaño <- names(sfTamañoHogar)[sapply(sfTamañoHogar, function(x) (is.character(x)))]
+
+dfTamaño <- as.data.frame(sfTamañoHogar)
+for (v in var.qualitativa.tamaño){
+  sfTamañoHogar [,v] <- as.factor(dfTamaño[,v])
+}
+
+sfTamañoHogar$Codigo_distrito<- as.factor(sfTamañoHogar$ Codigo_distrito)
+sfTamañoHogar$Codigo_barrio<- as.factor(sfTamañoHogar$ Codigo_barrio)
+
+str(sfTamañoHogar)
+```
+## 2.3. Análisis de datos
+
+Se crean variables por la cantidad de personas que puede llegar a tener un hogar para realizar la suma total y poder realizar los graficos estadisticos.
+```{r message=FALSE}
+Persona1 <- "1_persona"
+Año <- "Año"
+Año2018t <- 2018
+Persona12018<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2018t, Persona1])
+
+Personas2<- "2_personas"
+Personas22018<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2018t, Personas2])
+
+Personas3<- "3_personas"
+Personas32018<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2018t, Personas3])
+
+
+
+Personas4<- "4_personas"
+Personas42018<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2018t, Personas4])
+
+Personas5omas<- "5_personas_o_mas"
+Personas5omas2018<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2018t, Personas5omas])
+
+Año2019t <- 2019
+Persona12019<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2019t, Persona1])
+
+Personas22019<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2019t, Personas2])
+
+Personas32019<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2019t, Personas3])
+
+Personas42019<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2019t, Personas4])
+
+Personas5omas2019<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2019t, Personas5omas])
+
+Año2020t <- 2020
+Persona12020<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2020t, Persona1])
+
+Personas22020<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2020t, Personas2])
+
+Personas32020<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2020t, Personas3])
+
+Personas42020<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2020t, Personas4])
+
+Personas5omas2020<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2020t, Personas5omas])
+Año2021t <- 2021
+Persona12021<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2021t, Persona1])
+
+Personas22021<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2021t, Personas2])
+
+Personas32021<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2021t, Personas3])
+
+Personas42021<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2021t, Personas4])
+
+Personas5omas2021<-sum(dfTamañoHogar[dfTamañoHogar[,Año]==Año2021t, Personas5omas])
+
+Tamaño2018<-c(Persona12018, Personas22018, Personas32018, Personas42018, Personas5omas2018)
+```
+Se realiza el diagrama circular con las variables creadas anteriormente
+```{r message=FALSE}
+myPalette <- brewer.pal(5, "Set2")
+nombresTamaño<-c("1_Persona","2_Personas ","3_Personas ","4_Personas ","5_Personas_o_mas ")
+porcentajeTamaño <- round(Tamaño2018/sum(Tamaño2018)*100)
+nombresTamaño <- paste(nombresTamaño, porcentajeTamaño)
+ nombresTamaño <- paste(nombresTamaño,"%",sep="")
+pie(Tamaño2018,labels= nombresTamaño,col=myPalette,main="Población de Madrid según el tamaño de sus hogares año 2018")
+Tamaño2019<-c(Persona12019, Personas22019, Personas32019, Personas42019, Personas5omas2019)
+nombresTamaño2019<-c("1_Persona","2_Personas ","3_Personas ","4_Personas ","5_Personas_o_mas ")
+ porcentajeTamaño2019 <- round(Tamaño2019/sum(Tamaño2019)*100)
+nombresTamaño2019<- paste(nombresTamaño2019, porcentajeTamaño2019)
+nombresTamaño2019 <- paste(nombresTamaño2019,"%",sep="")
+pie(Tamaño2019,labels= nombresTamaño2019,col=myPalette,main="Población de Madrid según el tamaño de sus hogares año 2019")
+Tamaño2020<-c(Persona12020, Personas22020, Personas32020, Personas42020, Personas5omas2020)
+nombresTamaño2020<-c("1_Persona","2_Personas ","3_Personas ","4_Personas ","5_Personas_o_mas ")
+ porcentajeTamaño2020 <- round(Tamaño2020/sum(Tamaño2020)*100)
+nombresTamaño2020<- paste(nombresTamaño2020, porcentajeTamaño2020)
+nombresTamaño2020 <- paste(nombresTamaño2020,"%",sep="")
+pie(Tamaño2020,labels= nombresTamaño2020,col=myPalette,main="Población de Madrid según el tamaño de sus hogares año 2020")
+Tamaño2021<-c(Persona12021, Personas22021, Personas32021, Personas42021, Personas5omas2021)
+nombresTamaño2021<-c("1_Persona","2_Personas ","3_Personas ","4_Personas ","5_Personas_o_mas ")
+ porcentajeTamaño2021 <- round(Tamaño2021/sum(Tamaño2021)*100)
+nombresTamaño2021<- paste(nombresTamaño2021, porcentajeTamaño2021)
+nombresTamaño2021 <- paste(nombresTamaño2021,"%",sep="")
+pie(Tamaño2021,labels= nombresTamaño2021,col=myPalette,main="Población de Madrid según el tamaño de sus hogares año 2021")
+```
+Se crea diagrama de cajas por el año 2021 y el tamaño medio de los hogares
+```{r message=FALSE}
+ggplot(dfTamañoHogar, aes(x= as.factor(Año), y=Tamaño_medio_del_hogar)) +geom_boxplot()+ ggtitle("Tamaño medio de los hogares en Madrid") + xlab("Año") + ylab("Tamaño medio de los hogares") 
+```
+Se generan las capas en ArcGIS Pro para realizar el estudio geoespacial, incluyendo los tamaños de los hogares
+```{r message=FALSE}
+arc.delete(paste0(ARCGIS_PRO_PATH,'TamañoHogar_2018'))
+arc.write(path=paste0(ARCGIS_PRO_PATH,'TamañoHogar_2018'), data=sfTamañoHogar[sfTamañoHogar$Año==2018,], validate=TRUE, overwrite=TRUE)
+arc.delete(paste0(ARCGIS_PRO_PATH,'TamañoHogar_2019'))
+arc.write(path=paste0(ARCGIS_PRO_PATH,'TamañoHogar_2019'), data=sfTamañoHogar[sfTamañoHogar$Año==2019,], validate=TRUE, overwrite=TRUE)
+arc.delete(paste0(ARCGIS_PRO_PATH,'TamañoHogar_2020'))
+arc.write(path=paste0(ARCGIS_PRO_PATH,'TamañoHogar_2020'), data=sfTamañoHogar[sfTamañoHogar$Año==2020,], validate=TRUE, overwrite=TRUE)
+arc.delete(paste0(ARCGIS_PRO_PATH,'TamañoHogar_2021'))
+arc.write(path=paste0(ARCGIS_PRO_PATH,'TamañoHogar_2021'), data=sfTamañoHogar[sfTamañoHogar$Año==2021,], validate=TRUE, overwrite=TRUE)
+```
+# 3. Densidad 
+
+## 3.1. Carga de los datos
+
+Se cargan los 4 archivos que pertenecen a los años 2018 al 2021 y contiene el tamaño de las densidades de habitantes por hectárea en cada barrio de Madrid
+```{r message=FALSE}
+filesdensidad=list.files(pattern="*.csv")
+```
+Se unen todos los registros de los archivos en un dataframe
+```{r message=FALSE}
+ddensidad=lapply(filesdensidad, read_csv) %>% bind_rows()
+dfDensidad<-NULL
+dfDensidad <- bind_rows(dfDensidad, ddensidad)
+```
+## 3.2. Limpieza y tratamiento de los datos
+
+Se revisan cuales columnas tienen valores nulos
+```{r message=FALSE}
+sapply(dfDensidad, function(x) sum(is.na(x)))
+```
+Se comprueban los valores de las variables numéricas, donde observando la distribución de valores, no se observan outliers .
+```{r message=FALSE}
+summary(dfDensidad)
+```
+La funcion st_as_sf convierte el data frame en un objeto sf y se le asigna el sistema de coordenadas de referencia utilizando el argumento crs = 4326. La función st_transform() transforma el sistema de coordenadas. 
+```{r message=FALSE}
+sfDensidad <- st_as_sf(dfDensidad, coords=c('Longitud', 'Latitud'), crs=st_crs(4326))
+sfDensidad <- st_transform(sfDensidad, crs=crs_legal)
+```
+Las variables cualitativas nominales se han tratado como cadenas de caracteres en lugar de factores, por lo que se aplica la conversión a factor para realizar cálculos de frecuencia de aparición de cada valor.
+```{r message=FALSE}
+var.qualitativa.densidad <- names(sfDensidad)[sapply(sfDensidad, function(x) (is.character(x)))]
+
+dfDensidad <- as.data.frame(sfDensidad)
+for (v in var.qualitativa.densidad){
+  sfDensidad [,v] <- as.factor(dfDensidad[,v])
+}
+
+sfDensidad$Codigo_distrito<- as.factor(sfDensidad$ Codigo_distrito)
+sfDensidad$Codigo_barrio<- as.factor(sfDensidad$ Codigo_barrio)
+
+str(sfDensidad)
+```
+## 3.3. Análisis de datos
+
+Se crean gráficos estadísticos como diagrama de cajas, histograma de frecuencias y diagrama de densidad.
+```{r message=FALSE}
+ggplot(dfDensidad, aes(x= as.factor(Año), y=Densidad_habitantes_por_hectarea)) +geom_boxplot()+ ggtitle("Densidad de los habitantes por hectárea en los barrios de Madrid") + xlab("Año") + ylab("Densidad habitantes por hectarea") 
+hist(dfDensidad$Densidad_habitantes_por_hectarea, col="purple", labels=TRUE, main="Histograma densidad de habitantes por hectárea en Madrid",ylab="Frecuencias",xlab=" Densidad habitantes por hectarea")
+ggplot(dfDensidad, aes(x = Densidad_habitantes_por_hectarea)) +
++     geom_density()
+```
+Se generan las capas en ArcGIS Pro para realizar el estudio geoespacial, incluyendo las densidades de los habitantes de los barrios de Madrid por hectarea
+```{r message=FALSE}
+arc.delete(paste0(ARCGIS_PRO_PATH,'Densidad_2018'))
+arc.write(path=paste0(ARCGIS_PRO_PATH,'Densidad_2018'), data=sfDensidad[sfDensidad$Año==2018,], validate=TRUE, overwrite=TRUE)
+arc.delete(paste0(ARCGIS_PRO_PATH,'Densidad_2019'))
+arc.write(path=paste0(ARCGIS_PRO_PATH,'Densidad_2019'), data=sfDensidad[sfDensidad$Año==2019,], validate=TRUE, overwrite=TRUE)
+arc.delete(paste0(ARCGIS_PRO_PATH,'Densidad_2020'))
+arc.write(path=paste0(ARCGIS_PRO_PATH,'Densidad_2020'), data=sfDensidad[sfDensidad$Año==2020,], validate=TRUE, overwrite=TRUE)
+arc.delete(paste0(ARCGIS_PRO_PATH,'Densidad_2021'))
+arc.write(path=paste0(ARCGIS_PRO_PATH,'Densidad_2021'), data=sfDensidad[sfDensidad$Año==2021,], validate=TRUE, overwrite=TRUE)
+```
+# 4. Nivel de estudios 
+
+## 4.1. Carga de los datos
+
+Se cargan los 4 archivos que pertenecen a los años 2018 al 2021 y contiene el nivel de estudios de los habitantes en cada barrio de Madrid
+```{r message=FALSE}
+filesNivelEstudios=list.files(pattern="*.csv")
+```
+Se unen todos los registros de los archivos en un dataframe
+```{r message=FALSE}
+dnivelest=lapply(filesNivelEstudios, read_csv) %>% bind_rows()
+dfNivelEstudios <-NULL
+dfNivelEstudios <- bind_rows(dfNivelEstudios, dnivelest)
+```
+##4.2 Limpieza y tratamiento de los datos
+
+Se revisan cuales columnas tienen valores nulos.
+```{r message=FALSE}
+sapply(dfNivelEstudios, function(x) sum(is.na(x)))
+```
+Se comprueban los valores de las variables numéricas, donde observando la distribución de valores, no se observan outliers 
+```{r message=FALSE}
+summary(dfNivelEstudios)
+```
+La funcion st_as_sf convierte el data frame en un objeto sf y se le asigna el sistema de coordenadas de referencia utilizando el argumento crs = 4326. La función st_transform() transforma el sistema de coordenadas. 
+```{r message=FALSE}
+sfNivelEstudios <- st_as_sf(dfNivelEstudios, coords=c('Longitud', 'Latitud'), crs=st_crs(4326))
+sfNivelEstudios <- st_transform(sfNivelEstudios, crs=crs_legal)
+```
+Las variables cualitativas nominales se han tratado como cadenas de caracteres en lugar de factores, por lo que se aplica la conversión a factor para realizar cálculos de frecuencia de aparición de cada valor.
+```{r message=FALSE}
+var.qualitativa.nivel <- names(sfNivelEstudios)[sapply(sfNivelEstudios, function(x) (is.character(x)))]
+
+dfNivelEstudios <- as.data.frame(sfNivelEstudios)
+for (v in var.qualitativa.nivel){
+  sfNivelEstudios [,v] <- as.factor(dfNivelEstudios [,v])
+}
+
+sfNivelEstudios$Codigo_distrito<- as.factor(sfNivelEstudios$ Codigo_distrito)
+sfNivelEstudios$Codigo_barrio<- as.factor(sfNivelEstudios$ Codigo_barrio)
+
+str(sfNivelEstudios)
+```
+##4.3 Análisis de datos
+
+Se realizan histogramas de frecuencia del año 2021 y diagramas de caja de los años 2018 al 2021 de la variable nivel de estudios
+```{r message=FALSE}
+dfNivelEstudios2021<-filter (dfNivelEstudios, Año== 2021)
+
+hist(dfNivelEstudios2021$Sin_Estudio, col="green", labels=TRUE, main="Histograma nivel de educación sin estudios en los barrios de Madrid año 2021",ylab="Frecuencias",xlab="Sin_Estudio")
+hist(dfNivelEstudios2021$ Nivel_De_Educación_Básico, col="yellow", labels=TRUE, main="Histograma nivel de educación básico en los barrios de Madrid año 2021",ylab="Frecuencias",xlab="Nivel de educación básico")
+hist(dfNivelEstudios2021$ Nivel_De_Educación_Medio, col="purple", labels=TRUE, main="Histograma nivel de educación medio en los barrios de Madrid año 2021",ylab="Frecuencias",xlab="Nivel de educación medio")
+hist(dfNivelEstudios2021$ Nivel_De_Educación_Alto, col="red", labels=TRUE, main="Histograma nivel de educación alto en los barrios de Madrid año 2021",ylab="Frecuencias",xlab="Nivel de educación alto")
+ggplot(dfNivelEstudios, aes(x= as.factor(Año), y= Nivel_De_Educación_Básico)) +geom_boxplot()+ ggtitle("Nivel de educación básico en los barrios de Madrid") + xlab("Año") + ylab("Nivel_de_educación_básico") 
+ggplot(dfNivelEstudios, aes(x= as.factor(Año), y= Nivel_De_Educación_Medio)) +geom_boxplot()+ ggtitle("Nivel de educación medio en los barrios de Madrid") + xlab("Año") + ylab("Nivel_de_educación_medio") 
+ggplot(dfNivelEstudios, aes(x= as.factor(Año), y= Nivel_De_Educación_Alto)) +geom_boxplot()+ ggtitle("Nivel de educación alto en los barrios de Madrid") + xlab("Año") + ylab("Nivel_de_educación_alto") 
+```
+Se generan las capas en ArcGIS Pro para realizar el estudio geoespacial, incluyendo los niveles de estudio.
+```{r message=FALSE}
+arc.delete(paste0(ARCGIS_PRO_PATH,'NivelEstudios_2018'))
+arc.write(path=paste0(ARCGIS_PRO_PATH,'NivelEstudios_2018'), data=sfNivelEstudios[sfNivelEstudios$Año==2018,], validate=TRUE, overwrite=TRUE)
+arc.delete(paste0(ARCGIS_PRO_PATH,'NivelEstudios_2019'))
+arc.write(path=paste0(ARCGIS_PRO_PATH,'NivelEstudios_2019'), data=sfNivelEstudios[sfNivelEstudios$Año==2019,], validate=TRUE, overwrite=TRUE)
+arc.delete(paste0(ARCGIS_PRO_PATH,'NivelEstudios_2020'))
+arc.write(path=paste0(ARCGIS_PRO_PATH,'NivelEstudios_2020'), data=sfNivelEstudios[sfNivelEstudios$Año==2020,], validate=TRUE, overwrite=TRUE)
+arc.delete(paste0(ARCGIS_PRO_PATH,'NivelEstudios_2021'))
+arc.write(path=paste0(ARCGIS_PRO_PATH,'NivelEstudios_2021'), data=sfNivelEstudios[sfNivelEstudios$Año==2021,], validate=TRUE, overwrite=TRUE)
+```
